@@ -149,7 +149,7 @@ def executar_query_sql(ctx, query: str) -> str:
 # --- CONFIGURAÇÃO DA INTERFACE STREAMLIT ---
 st.set_page_config(page_title="CineData Analytics - Agente Text-to-SQL", page_icon="🎬")
 
-st.title("🎬 CineData Analytics - Assistente SQL")
+st.title("CineData Analytics SQL")
 
 st.sidebar.title("🛠️ Painel de Controle")
 st.sidebar.markdown("**Perguntas rápidas:**")
@@ -183,6 +183,34 @@ try:
         st.sidebar.caption("Monitoramento de cota ativo via OpenRouter.")
 except Exception:
     st.sidebar.caption("Cota diária: 50 reqs (Free Tier)")
+
+if st.sidebar.button("🗑️ Limpar Conversa"):
+    st.session_state.mensagens = []
+    st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("📈 **Métricas do Data Lakehouse**")
+
+try:
+    cursor = conn.cursor()
+    
+    # Total de filmes
+    cursor.execute("SELECT COUNT(*) FROM dim_movies;")
+    total_filmes = cursor.fetchone()[0]
+    
+    # Total de produtoras
+    cursor.execute("SELECT COUNT(*) FROM dim_companies;")
+    total_produtoras = cursor.fetchone()[0]
+    
+    # Exibe as métricas estilizadas no Streamlit
+    st.sidebar.metric(label="🎬 Total de Filmes", value=f"{total_filmes:,}".replace(",", "."))
+    st.sidebar.metric(label="🏢 Produtoras", value=total_produtoras)
+    st.sidebar.metric(label="🗄️ Camada Gold", value="10 Tabelas") # Conforme especificado no escopo[cite: 27]
+
+except Exception as e:
+    st.sidebar.caption("Não foi possível carregar as métricas do banco.")
+
+st.sidebar.markdown("---")
 
 if "mensagens" not in st.session_state:
     st.session_state.mensagens = []
