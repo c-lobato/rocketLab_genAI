@@ -129,7 +129,7 @@ CREATE TABLE movie_reviews (
 )
 
 # conexao ao banco carregado na pasta raiz
-conn = sqlite3.connect("cinerocket_database.db", check_same_thread=False)
+conn = sqlite3.connect("cinerocket.db", check_same_thread=False)
 print("Agente configurado na Base URL do OpenRouter com sucesso!")
 
 # tool de query SQL 
@@ -170,20 +170,18 @@ for s in sugestoes:
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Status OpenRouter (Free Tier)**")
 
-#consulta opcional à API do OpenRouter para buscar o uso de requisições do dia
-try:
-    headers = {"Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY')}"}
-    response = requests.get("https://openrouter.ai/api/v1/key", headers=headers)
-    if response.status_code == 200:
-        data = response.json().get("data", {})
-        #OpenRouter retorna informações de limite se aplicável
-        limite_diario = 50 
-        st.sidebar.info(f"Limite diário padrão: ~{limite_diario} requisições.")
-    else:
-        st.sidebar.caption("Monitoramento de cota ativo via OpenRouter.")
-except Exception:
-    st.sidebar.caption("Cota diária: 50 reqs (Free Tier)")
+# inicializa o contador local caso nao exista
+if "contador_reqs" not in st.session_state:
+    st.session_state.contador_reqs = 0
 
+limite_diario = 50
+restantes = limite_diario - st.session_state.contador_reqs
+
+# st.metric padroniza e estiliza com o restante da pagina
+st.sidebar.metric(label="Consultas realizadas hoje", value=st.session_state.contador_reqs)
+st.sidebar.caption(f"Lembrete: O limite do modelo free é de ~{limite_diario} requisições/dia.")
+
+# limpa o historico de conversa
 if st.sidebar.button("🗑️ Limpar Conversa"):
     st.session_state.mensagens = []
     st.rerun()
@@ -191,63 +189,54 @@ if st.sidebar.button("🗑️ Limpar Conversa"):
 st.sidebar.markdown("---")
 st.sidebar.markdown("📈 **Métricas do Data Lakehouse**")
 
+# puxa as metricas reais do banco de dados
 try:
     cursor = conn.cursor()
     
-    # Total de filmes
+    # total de filmes
     cursor.execute("SELECT COUNT(*) FROM dim_movies;")
     total_filmes = cursor.fetchone()[0]
     
-    # Total de produtoras
+    # total de produtoras
     cursor.execute("SELECT COUNT(*) FROM dim_companies;")
     total_produtoras = cursor.fetchone()[0]
     
-    # Exibe as métricas estilizadas no Streamlit
+    # exibe as metricas estilizadas no painel
     st.sidebar.metric(label="🎬 Total de Filmes", value=f"{total_filmes:,}".replace(",", "."))
     st.sidebar.metric(label="🏢 Produtoras", value=total_produtoras)
-    st.sidebar.metric(label="🗄️ Camada Gold", value="10 Tabelas") # Conforme especificado no escopo[cite: 27]
+    st.sidebar.metric(label="🗄️ Camada Gold", value="10 Tabelas") # conforme especificado no escopo
 
 except Exception as e:
-    st.sidebar.caption("Não foi possível carregar as métricas do banco.")
+    st.sidebar.caption("não foi possível carregar as métricas do banco.")
 
 st.sidebar.markdown("---")
 
+# inicializa a memoria do chat
 if "mensagens" not in st.session_state:
     st.session_state.mensagens = []
 
+# mostra as mensagens antigas na tela
 for msg in st.session_state.mensagens:
     st.chat_message(msg["role"]).write(msg["content"])
-    if "df" in msg and msg["df"] is not None:
-        st.download_button(
-            label="📥 Baixar dados em CSV",
-            data=msg["df"].to_csv(index=False).encode('utf-8'),
-            file_name="cinedata_export.csv",
-            mime="text/csv",
-            key=msg["key"]
-        )
 
 pergunta = st.chat_input("Faça uma pergunta sobre os filmes...") or pergunta_selecionada
 
 if pergunta:
+    # salva e mostra a msg do usuario
     st.session_state.mensagens.append({"role": "user", "content": pergunta})
     st.chat_message("user").write(pergunta)
     
     with st.spinner("O agente está analisando o banco de dados..."):
+        # roda o agente
         resultado = agente.run_sync(pergunta)
         resposta_ia = resultado.output
         
-        df_resultado = None
-        try:
-            # Pegamos a última query executada ou rodamos uma busca complementar se necessário,
-            # ou convertemos o output estruturado se o agente retornar em formato de tabela/lista.
-            # Como o output é texto/tabela do Pydantic, podemos também consultar diretamente o banco 
-            # usando a mesma pergunta para gerar o CSV de exportação:
-            cursor = conn.cursor()
-        except Exception:
-            pass
+        # soma 1 no contador da sessao
+        st.session_state.contador_reqs += 1
 
-    # Salva e exibe a resposta da IA com suporte a chave única para o botão
-    msg_dict = {"role": "assistant", "content": resposta_ia, "df": None, "key": str(len(st.session_state.mensagens))}
-    
-    st.session_state.mensagens.append(msg_dict)
+    # salva e mostra a resposta do agente
+    st.session_state.mensagens.append({"role": "assistant", "content": resposta_ia})
     st.chat_message("assistant").write(resposta_ia)
+    
+    # atualiza a tela pro contador da sidebar mudar na hora
+    st.rerun()

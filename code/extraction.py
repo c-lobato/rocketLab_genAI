@@ -1,7 +1,7 @@
 import sqlite3
 
 #EXTRAÇÃO DOS SCHEMAS DO BANCO DE DADOS
-conn = sqlite3.connect("cinerocket_database.db")
+conn = sqlite3.connect("cinerocket.db")
 cursor = conn.cursor()
 cursor.execute("SELECT sql FROM sqlite_master WHERE type='table';") #query bara buscar todas as tabelas presente no banco 
 schemas = cursor.fetchall()
